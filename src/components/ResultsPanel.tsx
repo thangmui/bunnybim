@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LogoIcon, DownloadIcon, RetryIcon } from './icons';
 
@@ -32,7 +33,7 @@ const ErrorState: React.FC<{ message: string }> = ({ message }) => (
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <h3 className="text-xl font-bold">Oops! Đã có lỗi xảy ra</h3>
-        <p className="max-w-xs bg-red-900/50 p-3 rounded-md text-sm whitespace-pre-wrap">{message}</p>
+        <p className="max-w-md bg-red-900/50 p-4 rounded-md text-sm whitespace-pre-wrap">{message}</p>
     </div>
 );
 
