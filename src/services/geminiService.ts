@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { ImageFile } from '../types';
 
@@ -25,10 +26,10 @@ export const initializeApiKeys = (keysString: string) => {
 
 /**
  * A centralized wrapper for making API calls that includes retry logic for quota errors.
- * @param apiCall The async function to call, which will receive a GoogleGenAI instance.
+ * @param apiCall The async function to call, which will receive a GoogleGenAI instance and the API key used.
  * @returns The result of the successful API call.
  */
-const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI) => Promise<T>): Promise<T> => {
+const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI, apiKey: string) => Promise<T>): Promise<T> => {
     if (apiKeys.length === 0) {
         throw new Error("Vui lòng nhập Khóa API của bạn trong phần 'Quản lý Khóa API' để sử dụng ứng dụng.");
     }
@@ -36,12 +37,12 @@ const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI) => Promise<T>)
     const triedIndexes = new Set<number>();
 
     while (triedIndexes.size < apiKeys.length) {
+        const currentKey = apiKeys[currentKeyIndex];
         try {
-            const currentKey = apiKeys[currentKeyIndex];
             triedIndexes.add(currentKeyIndex);
             
             const ai = new GoogleGenAI({ apiKey: currentKey });
-            return await apiCall(ai);
+            return await apiCall(ai, currentKey);
 
         } catch (error) {
             console.error(`API call with key index ${currentKeyIndex} failed.`);
@@ -153,7 +154,7 @@ export const translateText = async (text: string, targetLanguage: 'vi' | 'en'): 
         return '';
     }
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const prompt = `Translate the following text to ${targetLanguage === 'vi' ? 'Vietnamese' : 'English'}. Return only the translated text, without any introductory phrases or quotes. Text to translate: "${text}"`;
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
@@ -175,7 +176,7 @@ export const translateText = async (text: string, targetLanguage: 'vi' | 'en'): 
  */
 export const generateImageFromText = async (prompt: string, count: number, aspectRatio: string): Promise<string[]> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const response = await ai.models.generateImages({
                 model: 'imagen-4.0-generate-001',
                 prompt: prompt,
@@ -203,7 +204,7 @@ export const generateImageFromText = async (prompt: string, count: number, aspec
  */
 export const generateCreativePrompt = async (basePrompt: string): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: `Based on the following idea, generate a detailed, creative, and descriptive prompt for an AI image generator. The prompt should be in English to maximize compatibility with generation models. Idea: "${basePrompt}"`,
@@ -290,6 +291,7 @@ export const generateIdPhotoPrompt = (options: { shirt: string; background: 'xan
     const { shirt, background, wearSuit } = options;
     const backgroundColor = background === 'xanh' ? 'solid bright blue (#007bff)' : 'solid white (#ffffff)';
     
+    // FIX: Corrected an invalid escape sequence `\\'` to `\'` which was causing a syntax error.
     const clothingInstruction = wearSuit 
         ? 'Change the person\'s attire to a professional business suit (e.g., a dark suit jacket, white dress shirt, and a formal tie). Ensure the suit looks natural and fits perfectly.'
         : `Change the person's attire to a professional ${shirt}. Ensure the clothing looks natural and fits well.`;
@@ -314,7 +316,7 @@ export const generateDefaultPrompt = async (style?: string): Promise<string> => 
     }
 
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: finalPrompt,
@@ -351,7 +353,7 @@ export const generateCombinedPeoplePrompt = (style?: string): string => {
  */
 export const editImage = async (prompt: string, image: ImageFile): Promise<string> => {
      try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const fullPrompt = `You are an expert photo editor. Your primary instruction is to follow the user's prompt precisely. A key rule is to **never alter the person in the provided image unless specifically asked to**. The user wants to add elements around them or change the background. User prompt: "${prompt}"`;
 
             const imagePart = {
@@ -392,7 +394,7 @@ export const editImage = async (prompt: string, image: ImageFile): Promise<strin
  */
 export const generateCombinedImage = async (prompt: string, subjectImage: ImageFile, productImage: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const basePrompt = `
 Analyze the two images provided. The first image contains a subject (e.g., a person, an animal). The second image contains a product (e.g., clothing, an object). Your task is to create a single, new, hyperrealistic photograph that seamlessly combines them in a logical and natural way.
 
@@ -452,7 +454,7 @@ User's Creative Direction:
  */
 export const generateCombinedPeopleImage = async (prompt: string, person1Image: ImageFile, person2Image: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const basePrompt = `
 You are a world-class visual effects and compositing artist. Your task is to analyze two images, each with a person, and create a single, new, hyperrealistic photograph that seamlessly integrates both individuals into a shared, photorealistic scene. The final image must be indistinguishable from a real photograph shot with a high-end camera.
 
@@ -510,11 +512,15 @@ Technical & Artistic Integration Mandates (Non-negotiable):
 
 
 /**
- * Generates videos from a prompt and an optional image.
+ * Generates videos from a prompt and an optional image, and returns playable blob URLs.
  */
 export const generateVideo = async (prompt: string, image: ImageFile | null, count: number, onProgress: (message: string) => void): Promise<string[]> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        let usedApiKey = '';
+
+        const videoUris = await makeApiCallWithRetry(async (ai, apiKey) => {
+            usedApiKey = apiKey; // Capture the key for fetching later
+
             onProgress("Bắt đầu yêu cầu tạo video...");
             
             const imagePayload = image ? { imageBytes: image.base64, mimeType: image.mimeType } : undefined;
@@ -531,7 +537,6 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
             while (!operation.done) {
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 onProgress("Đang kiểm tra tiến độ...");
-                // Use the same 'ai' instance for polling
                 operation = await ai.operations.getVideosOperation({ operation: operation });
             }
 
@@ -545,6 +550,23 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
             
             return downloadLinks.map(link => link.replace('/v1main/', '/v1beta/'));
         });
+
+        onProgress("Đang tải video về trình duyệt để hiển thị...");
+
+        const videoBlobUrls = await Promise.all(
+            videoUris.map(async (uri) => {
+                const response = await fetch(`${uri}&key=${usedApiKey}`);
+                if (!response.ok) {
+                    console.error(`Failed to download video from ${uri}`, await response.text());
+                    throw new Error(`Tải video thất bại (status: ${response.status}).`);
+                }
+                const blob = await response.blob();
+                return URL.createObjectURL(blob);
+            })
+        );
+        
+        return videoBlobUrls;
+
     } catch (error) {
         throw handleApiError(error, "Tạo video thất bại. Vui lòng thử lại.");
     }
@@ -555,7 +577,7 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
  */
 export const generateVideoPromptFromImage = async (image: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai) => {
+        return await makeApiCallWithRetry(async (ai, apiKey) => {
             const metaPrompt = `Analyze the provided image. Based on the visual content, create a detailed, dynamic prompt in English for an AI video generation model (like VEO). The prompt should describe a short, looping video scene that brings the image to life. Specify smooth, cinematic camera movements (like a slow dolly zoom or a gentle pan), ultra-high resolution, and photorealistic quality. Ensure the prompt requests seamless motion without any stuttering, aliasing, or artifacts. The prompt should focus on action and atmosphere, transforming the static image into a living moment. Return only the prompt itself.`;
 
             const imagePart = {
