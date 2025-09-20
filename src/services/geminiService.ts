@@ -4,6 +4,15 @@ import type { ImageFile } from '../types';
 let apiKeys: string[] = [];
 let currentKeyIndex = 0;
 
+// Custom error class to identify retriable quota errors
+class RetriableApiError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'RetriableApiError';
+    }
+}
+
+
 /**
  * Initializes or updates the list of API keys available to the service.
  * @param keysString A string of API keys, separated by commas.
@@ -21,10 +30,9 @@ export const initializeApiKeys = (keysString: string) => {
  */
 const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI) => Promise<T>): Promise<T> => {
     if (apiKeys.length === 0) {
-        throw new Error("Vui lòng nhập Khóa API của bạn để sử dụng ứng dụng.");
+        throw new Error("Vui lòng nhập Khóa API của bạn trong phần 'Quản lý Khóa API' để sử dụng ứng dụng.");
     }
 
-    const initialKeyIndex = currentKeyIndex;
     const triedIndexes = new Set<number>();
 
     while (triedIndexes.size < apiKeys.length) {
@@ -38,20 +46,20 @@ const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI) => Promise<T>)
         } catch (error) {
             console.error(`API call with key index ${currentKeyIndex} failed.`);
             
-            const apiError = handleApiError(error, "Lỗi không xác định");
+            const apiError = handleApiError(error, "Lỗi không xác định từ API.");
             
-            if (apiError.message.includes('Lỗi hạn ngạch')) {
+            if (apiError instanceof RetriableApiError) {
                 currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-                console.log(`Quota error. Rotating to key index ${currentKeyIndex}.`);
+                console.log(`Retriable quota error. Rotating to key index ${currentKeyIndex}.`);
                 // Continue to the next iteration to retry with the next key
             } else {
-                // For any other error (e.g., authentication, server error), fail immediately
+                // For any other, non-retriable error, fail immediately
                 throw apiError;
             }
         }
     }
     
-    // If the loop completes, it means all keys have been tried and failed with a quota error.
+    // If the loop completes, it means all keys have been tried and failed with a retriable quota error.
     const errorMessage = `Tất cả ${apiKeys.length} Khóa API bạn cung cấp đều đã tạm thời đạt đến giới hạn sử dụng.
 
 **Cách khắc phục:**
@@ -83,14 +91,16 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
     if (potentialJson) {
         try {
             const parsed = JSON.parse(potentialJson);
-            errorDetails = parsed;
+            errorDetails = parsed.error || parsed;
         } catch (e) {
+            // Error message is not JSON, handle as plain text.
             const lowerMessage = potentialJson.toLowerCase();
-            if (lowerMessage.includes('unauthenticated')) {
+            if (lowerMessage.includes('unauthenticated') || lowerMessage.includes('api key not valid')) {
                  return new Error('Lỗi xác thực: Khóa API không hợp lệ hoặc đã bị thu hồi. Vui lòng kiểm tra lại.');
             }
-            if (lowerMessage.includes('resource_exhausted') || lowerMessage.includes('quota')) {
-                 return new Error('Lỗi hạn ngạch: Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng kiểm tra gói dịch vụ và thông tin thanh toán của bạn.');
+            // Check for 429 specifically for retry
+            if (lowerMessage.includes('429') && (lowerMessage.includes('resource_exhausted') || lowerMessage.includes('quota'))) {
+                 return new RetriableApiError('Lỗi hạn ngạch: Bạn đã tạm thời vượt quá hạn ngạch sử dụng API. Hệ thống sẽ thử lại với khóa khác (nếu có).');
             }
              if (lowerMessage.includes('unavailable')) {
                 return new Error('Dịch vụ AI hiện đang quá tải hoặc không khả dụng. Vui lòng thử lại sau ít phút.');
@@ -98,6 +108,7 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
             if (lowerMessage.includes('internal error')) {
                 return new Error('Máy chủ AI đã gặp lỗi nội bộ. Vui lòng thử lại sau.');
             }
+            // For other errors that might contain 'quota' but aren't 429, show them directly.
             return new Error(potentialJson);
         }
     }
@@ -107,11 +118,13 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
     const status = finalErrorObject.status;
     const message = finalErrorObject.message || defaultMessage;
 
+    // Specific check for retriable quota error
+    if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
+        return new RetriableApiError('Lỗi hạn ngạch: Bạn đã tạm thời vượt quá hạn ngạch sử dụng API. Hệ thống sẽ thử lại với khóa khác (nếu có).');
+    }
+
     if (code === 401 || status === 'UNAUTHENTICATED') {
         return new Error('Lỗi xác thực: Khóa API không hợp lệ hoặc đã bị thu hồi. Vui lòng kiểm tra lại.');
-    }
-    if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
-        return new Error('Lỗi hạn ngạch: Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng kiểm tra gói dịch vụ và thông tin thanh toán của bạn.');
     }
     if (code === 503 || status === 'UNAVAILABLE') {
         return new Error('Dịch vụ AI hiện đang quá tải hoặc không khả dụng. Vui lòng thử lại sau ít phút.');
@@ -120,13 +133,17 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
         return new Error('Máy chủ AI đã gặp lỗi nội bộ. Vui lòng thử lại sau.');
     }
 
-    if (typeof message === 'string' && (message.startsWith('Lỗi') || message.startsWith('Dịch vụ') || message.startsWith('Tạo ảnh') || message.startsWith('Chỉnh sửa'))) {
-        return new Error(message);
+    // For other errors, return the message from the API to provide more context.
+    if (message && typeof message === 'string') {
+        // Add a generic prefix if the message isn't already a user-friendly one.
+        if (message.startsWith('Lỗi') || message.startsWith('Dịch vụ') || message.startsWith('Tạo ảnh') || message.startsWith('Chỉnh sửa')) {
+            return new Error(message);
+        }
+        return new Error(`Đã xảy ra lỗi từ API: ${message}`);
     }
     
     return new Error(defaultMessage);
 };
-
 
 /**
  * Translates text to the target language using the Gemini API.

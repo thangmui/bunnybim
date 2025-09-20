@@ -1,11 +1,10 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultsPanel } from './components/ResultsPanel';
-import { ApiKeyModal } from './components/ApiKeyModal';
 import { ImageFile, ActiveTab, GenerationRequest } from './types';
 import { 
-    initializeApiKeys,
     generateCombinedImage, 
     generateVideo, 
     generateCelebrityStylePrompt, 
@@ -50,6 +49,7 @@ const App: React.FC = () => {
   const [logoText, setLogoText] = useState('');
   const [model3dStyle, setModel3dStyle] = useState('Thế giới Online 3d');
 
+
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [generatedVideos, setGeneratedVideos] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,37 +57,6 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [lastRequest, setLastRequest] = useState<GenerationRequest | null>(null);
-  
-  const [apiKeys, setApiKeys] = useState<string>('');
-  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
-
-  // Load keys from localStorage and initialize the service
-  useEffect(() => {
-    try {
-      const savedKeys = localStorage.getItem('geminiApiKeys') || '';
-      setApiKeys(savedKeys);
-      initializeApiKeys(savedKeys);
-      // Open modal on first load if no keys are present
-      if (!savedKeys) {
-        setIsApiModalOpen(true);
-      }
-    } catch (e) {
-      console.error("Failed to access localStorage:", e);
-    }
-  }, []);
-
-  const handleSaveApiKeys = (keys: string) => {
-    try {
-      localStorage.setItem('geminiApiKeys', keys);
-      setApiKeys(keys);
-      initializeApiKeys(keys);
-      setIsApiModalOpen(false);
-    } catch (e) {
-      console.error("Failed to save keys to localStorage:", e);
-      setError("Không thể lưu Khóa API. Trình duyệt của bạn có thể đang chặn Local Storage.");
-    }
-  };
-
 
   // Load saved settings from localStorage on initial mount
   useEffect(() => {
@@ -395,10 +364,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-brand-dark flex flex-col p-4 sm:p-6 lg:p-8 font-sans">
-      <Header 
-        onOpenApiKeyModal={() => setIsApiModalOpen(true)}
-        hasApiKeys={!!apiKeys}
-      />
+      <Header />
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
         <ControlPanel
           activeTab={activeTab}
@@ -452,12 +418,6 @@ const App: React.FC = () => {
           onRegenerate={handleRegenerate}
         />
       </main>
-      <ApiKeyModal 
-        isOpen={isApiModalOpen}
-        onClose={() => setIsApiModalOpen(false)}
-        currentKeys={apiKeys}
-        onSave={handleSaveApiKeys}
-      />
     </div>
   );
 };
