@@ -292,7 +292,6 @@ export const generateIdPhotoPrompt = (options: { shirt: string; background: 'xan
     const { shirt, background, wearSuit } = options;
     const backgroundColor = background === 'xanh' ? 'solid bright blue (#007bff)' : 'solid white (#ffffff)';
     
-    // FIX: Replaced single-quoted string with template literal to fix syntax error from incorrect apostrophe escaping.
     const clothingInstruction = wearSuit 
         ? `Change the person's attire to a professional business suit (e.g., a dark suit jacket, white dress shirt, and a formal tie). Ensure the suit looks natural and fits perfectly.`
         : `Change the person's attire to a professional ${shirt}. Ensure the clothing looks natural and fits well.`;
