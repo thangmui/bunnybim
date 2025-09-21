@@ -5,15 +5,6 @@ import type { ImageFile } from '../types';
 let apiKeys: string[] = [];
 let currentKeyIndex = 0;
 
-// Custom error class to identify retriable quota errors
-class RetriableApiError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'RetriableApiError';
-    }
-}
-
-
 /**
  * Initializes or updates the list of API keys available to the service.
  * @param keysString A string of API keys, separated by commas.
@@ -26,41 +17,42 @@ export const initializeApiKeys = (keysString: string) => {
 
 /**
  * A centralized wrapper for making API calls that includes retry logic for quota errors.
- * @param apiCall The async function to call, which will receive a GoogleGenAI instance and the API key used.
+ * @param apiCall The async function to call, which will receive a GoogleGenAI instance.
  * @returns The result of the successful API call.
  */
-const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI, apiKey: string) => Promise<T>): Promise<T> => {
+const makeApiCallWithRetry = async <T>(apiCall: (ai: GoogleGenAI) => Promise<T>): Promise<T> => {
     if (apiKeys.length === 0) {
-        throw new Error("Vui lòng nhập Khóa API của bạn trong phần 'Quản lý Khóa API' để sử dụng ứng dụng.");
+        throw new Error("Vui lòng nhập Khóa API của bạn để sử dụng ứng dụng.");
     }
 
+    const initialKeyIndex = currentKeyIndex;
     const triedIndexes = new Set<number>();
 
     while (triedIndexes.size < apiKeys.length) {
-        const currentKey = apiKeys[currentKeyIndex];
         try {
+            const currentKey = apiKeys[currentKeyIndex];
             triedIndexes.add(currentKeyIndex);
             
             const ai = new GoogleGenAI({ apiKey: currentKey });
-            return await apiCall(ai, currentKey);
+            return await apiCall(ai);
 
         } catch (error) {
             console.error(`API call with key index ${currentKeyIndex} failed.`);
             
-            const apiError = handleApiError(error, "Lỗi không xác định từ API.");
+            const apiError = handleApiError(error, "Lỗi không xác định");
             
-            if (apiError instanceof RetriableApiError) {
+            if (apiError.message.includes('Lỗi hạn ngạch')) {
                 currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-                console.log(`Retriable quota error. Rotating to key index ${currentKeyIndex}.`);
+                console.log(`Quota error. Rotating to key index ${currentKeyIndex}.`);
                 // Continue to the next iteration to retry with the next key
             } else {
-                // For any other, non-retriable error, fail immediately
+                // For any other error (e.g., authentication, server error), fail immediately
                 throw apiError;
             }
         }
     }
     
-    // If the loop completes, it means all keys have been tried and failed with a retriable quota error.
+    // If the loop completes, it means all keys have been tried and failed with a quota error.
     const errorMessage = `Tất cả ${apiKeys.length} Khóa API bạn cung cấp đều đã tạm thời đạt đến giới hạn sử dụng.
 
 **Cách khắc phục:**
@@ -91,18 +83,15 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
 
     if (potentialJson) {
         try {
-            // Some errors are JSON strings, try to parse.
             const parsed = JSON.parse(potentialJson);
-            errorDetails = parsed.error || parsed;
+            errorDetails = parsed;
         } catch (e) {
-            // Error message is not JSON, handle as plain text.
             const lowerMessage = potentialJson.toLowerCase();
-            if (lowerMessage.includes('unauthenticated') || lowerMessage.includes('api key not valid')) {
+            if (lowerMessage.includes('unauthenticated')) {
                  return new Error('Lỗi xác thực: Khóa API không hợp lệ hoặc đã bị thu hồi. Vui lòng kiểm tra lại.');
             }
-            // Check for 429 specifically for retry
-            if (lowerMessage.includes('429') && (lowerMessage.includes('resource_exhausted') || lowerMessage.includes('quota'))) {
-                 return new RetriableApiError('Lỗi hạn ngạch: Bạn đã tạm thời vượt quá hạn ngạch sử dụng API. Hệ thống sẽ thử lại với khóa khác (nếu có).');
+            if (lowerMessage.includes('resource_exhausted') || lowerMessage.includes('quota')) {
+                 return new Error('Lỗi hạn ngạch: Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng kiểm tra gói dịch vụ và thông tin thanh toán của bạn.');
             }
              if (lowerMessage.includes('unavailable')) {
                 return new Error('Dịch vụ AI hiện đang quá tải hoặc không khả dụng. Vui lòng thử lại sau ít phút.');
@@ -110,7 +99,6 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
             if (lowerMessage.includes('internal error')) {
                 return new Error('Máy chủ AI đã gặp lỗi nội bộ. Vui lòng thử lại sau.');
             }
-            // For other errors that might contain 'quota' but aren't 429, show them directly.
             return new Error(potentialJson);
         }
     }
@@ -120,13 +108,11 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
     const status = finalErrorObject.status;
     const message = finalErrorObject.message || defaultMessage;
 
-    // Specific check for retriable quota error
-    if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
-        return new RetriableApiError('Lỗi hạn ngạch: Bạn đã tạm thời vượt quá hạn ngạch sử dụng API. Hệ thống sẽ thử lại với khóa khác (nếu có).');
-    }
-
     if (code === 401 || status === 'UNAUTHENTICATED') {
         return new Error('Lỗi xác thực: Khóa API không hợp lệ hoặc đã bị thu hồi. Vui lòng kiểm tra lại.');
+    }
+    if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
+        return new Error('Lỗi hạn ngạch: Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng kiểm tra gói dịch vụ và thông tin thanh toán của bạn.');
     }
     if (code === 503 || status === 'UNAVAILABLE') {
         return new Error('Dịch vụ AI hiện đang quá tải hoặc không khả dụng. Vui lòng thử lại sau ít phút.');
@@ -135,17 +121,13 @@ const handleApiError = (error: unknown, defaultMessage: string): Error => {
         return new Error('Máy chủ AI đã gặp lỗi nội bộ. Vui lòng thử lại sau.');
     }
 
-    // For other errors, return the message from the API to provide more context.
-    if (message && typeof message === 'string') {
-        // Add a generic prefix if the message isn't already a user-friendly one.
-        if (message.startsWith('Lỗi') || message.startsWith('Dịch vụ') || message.startsWith('Tạo ảnh') || message.startsWith('Chỉnh sửa')) {
-            return new Error(message);
-        }
-        return new Error(`Đã xảy ra lỗi từ API: ${message}`);
+    if (typeof message === 'string' && (message.startsWith('Lỗi') || message.startsWith('Dịch vụ') || message.startsWith('Tạo ảnh') || message.startsWith('Chỉnh sửa'))) {
+        return new Error(message);
     }
     
     return new Error(defaultMessage);
 };
+
 
 /**
  * Translates text to the target language using the Gemini API.
@@ -155,7 +137,7 @@ export const translateText = async (text: string, targetLanguage: 'vi' | 'en'): 
         return '';
     }
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const prompt = `Translate the following text to ${targetLanguage === 'vi' ? 'Vietnamese' : 'English'}. Return only the translated text, without any introductory phrases or quotes. Text to translate: "${text}"`;
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
@@ -177,7 +159,7 @@ export const translateText = async (text: string, targetLanguage: 'vi' | 'en'): 
  */
 export const generateImageFromText = async (prompt: string, count: number, aspectRatio: string): Promise<string[]> => {
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const response = await ai.models.generateImages({
                 model: 'imagen-4.0-generate-001',
                 prompt: prompt,
@@ -205,7 +187,7 @@ export const generateImageFromText = async (prompt: string, count: number, aspec
  */
 export const generateCreativePrompt = async (basePrompt: string): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: `Based on the following idea, generate a detailed, creative, and descriptive prompt for an AI image generator. The prompt should be in English to maximize compatibility with generation models. Idea: "${basePrompt}"`,
@@ -293,7 +275,7 @@ export const generateIdPhotoPrompt = (options: { shirt: string; background: 'xan
     const backgroundColor = background === 'xanh' ? 'solid bright blue (#007bff)' : 'solid white (#ffffff)';
     
     const clothingInstruction = wearSuit 
-        ? `Change the person's attire to a professional business suit (e.g., a dark suit jacket, white dress shirt, and a formal tie). Ensure the suit looks natural and fits perfectly.`
+        ? 'Change the person\'s attire to a professional business suit (e.g., a dark suit jacket, white dress shirt, and a formal tie). Ensure the suit looks natural and fits perfectly.'
         : `Change the person's attire to a professional ${shirt}. Ensure the clothing looks natural and fits well.`;
 
     const prompt = `
@@ -316,7 +298,7 @@ export const generateDefaultPrompt = async (style?: string): Promise<string> => 
     }
 
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: finalPrompt,
@@ -353,7 +335,7 @@ export const generateCombinedPeoplePrompt = (style?: string): string => {
  */
 export const editImage = async (prompt: string, image: ImageFile): Promise<string> => {
      try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const fullPrompt = `You are an expert photo editor. Your primary instruction is to follow the user's prompt precisely. A key rule is to **never alter the person in the provided image unless specifically asked to**. The user wants to add elements around them or change the background. User prompt: "${prompt}"`;
 
             const imagePart = {
@@ -394,7 +376,7 @@ export const editImage = async (prompt: string, image: ImageFile): Promise<strin
  */
 export const generateCombinedImage = async (prompt: string, subjectImage: ImageFile, productImage: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const basePrompt = `
 Analyze the two images provided. The first image contains a subject (e.g., a person, an animal). The second image contains a product (e.g., clothing, an object). Your task is to create a single, new, hyperrealistic photograph that seamlessly combines them in a logical and natural way.
 
@@ -454,7 +436,7 @@ User's Creative Direction:
  */
 export const generateCombinedPeopleImage = async (prompt: string, person1Image: ImageFile, person2Image: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const basePrompt = `
 You are a world-class visual effects and compositing artist. Your task is to analyze two images, each with a person, and create a single, new, hyperrealistic photograph that seamlessly integrates both individuals into a shared, photorealistic scene. The final image must be indistinguishable from a real photograph shot with a high-end camera.
 
@@ -512,15 +494,11 @@ Technical & Artistic Integration Mandates (Non-negotiable):
 
 
 /**
- * Generates videos from a prompt and an optional image, and returns playable blob URLs.
+ * Generates videos from a prompt and an optional image.
  */
 export const generateVideo = async (prompt: string, image: ImageFile | null, count: number, onProgress: (message: string) => void): Promise<string[]> => {
     try {
-        let usedApiKey = '';
-
-        const videoUris = await makeApiCallWithRetry(async (ai, apiKey) => {
-            usedApiKey = apiKey; // Capture the key for fetching later
-
+        return await makeApiCallWithRetry(async (ai) => {
             onProgress("Bắt đầu yêu cầu tạo video...");
             
             const imagePayload = image ? { imageBytes: image.base64, mimeType: image.mimeType } : undefined;
@@ -537,6 +515,7 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
             while (!operation.done) {
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 onProgress("Đang kiểm tra tiến độ...");
+                // Use the same 'ai' instance for polling
                 operation = await ai.operations.getVideosOperation({ operation: operation });
             }
 
@@ -550,23 +529,6 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
             
             return downloadLinks.map(link => link.replace('/v1main/', '/v1beta/'));
         });
-
-        onProgress("Đang tải video về trình duyệt để hiển thị...");
-
-        const videoBlobUrls = await Promise.all(
-            videoUris.map(async (uri) => {
-                const response = await fetch(`${uri}&key=${usedApiKey}`);
-                if (!response.ok) {
-                    console.error(`Failed to download video from ${uri}`, await response.text());
-                    throw new Error(`Tải video thất bại (status: ${response.status}).`);
-                }
-                const blob = await response.blob();
-                return URL.createObjectURL(blob);
-            })
-        );
-        
-        return videoBlobUrls;
-
     } catch (error) {
         throw handleApiError(error, "Tạo video thất bại. Vui lòng thử lại.");
     }
@@ -577,7 +539,7 @@ export const generateVideo = async (prompt: string, image: ImageFile | null, cou
  */
 export const generateVideoPromptFromImage = async (image: ImageFile): Promise<string> => {
     try {
-        return await makeApiCallWithRetry(async (ai, apiKey) => {
+        return await makeApiCallWithRetry(async (ai) => {
             const metaPrompt = `Analyze the provided image. Based on the visual content, create a detailed, dynamic prompt in English for an AI video generation model (like VEO). The prompt should describe a short, looping video scene that brings the image to life. Specify smooth, cinematic camera movements (like a slow dolly zoom or a gentle pan), ultra-high resolution, and photorealistic quality. Ensure the prompt requests seamless motion without any stuttering, aliasing, or artifacts. The prompt should focus on action and atmosphere, transforming the static image into a living moment. Return only the prompt itself.`;
 
             const imagePart = {
@@ -758,6 +720,11 @@ export const generateMotionBlurPrompt = (): string => {
     ];
     return prompts[Math.floor(Math.random() * prompts.length)];
 };
+
+export const generateBackgroundRemovalPrompt = (): string => {
+    return 'Xóa phông nền của hình ảnh này, chỉ giữ lại chủ thể chính. Xuất ra ảnh PNG với nền trong suốt, các cạnh được xử lý sắc nét, không thay đổi chủ thể.';
+};
+
 export const generate3dModelPrompt = (style: string): string => {
     const baseInstruction = `Transform the person from the provided photo into a 3D character model while perfectly preserving their facial features and recognizable identity. The final image must be high-quality, detailed, and masterfully executed in the specified style.`;
 

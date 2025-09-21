@@ -29,6 +29,7 @@ import {
     generateVideoPromptFromImage,
     generateMotionBlurPrompt,
     generate3dModelPrompt,
+    generateBackgroundRemovalPrompt,
 } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -127,6 +128,8 @@ const App: React.FC = () => {
       setPrompt(generateOldPhotoRestorePrompt());
     } else if (selectedFeature === 'Làm nét/ tăng độ phân giải ảnh') {
       setPrompt(generateUpscaledImagePrompt());
+    } else if (selectedFeature === 'Xóa nền') {
+      setPrompt(generateBackgroundRemovalPrompt());
     }
   }, [selectedFeature]);
 
@@ -241,7 +244,7 @@ const App: React.FC = () => {
 
       } else {
          // Logic for all other image-based features
-        if (!prompt && !['Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh'].includes(selectedFeature)) {
+        if (!prompt && !['Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh', 'Xóa nền'].includes(selectedFeature)) {
           setError('Vui lòng nhập hoặc tạo một ý tưởng sáng tạo (prompt) trước khi bắt đầu.');
           setIsLoading(false);
           return;
@@ -251,7 +254,7 @@ const App: React.FC = () => {
         let generationPromises: Promise<string>[] = [];
         let englishPromptForApi = '';
       
-        if (['Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh'].includes(selectedFeature)) {
+        if (['Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh', 'Xóa nền'].includes(selectedFeature)) {
           englishPromptForApi = prompt;
         } else {
           setLoadingMessage('Đang dịch prompt của bạn...');
@@ -294,7 +297,13 @@ const App: React.FC = () => {
             editImage(englishPromptForApi, subjectImage),
             editImage(englishPromptForApi, subjectImage),
           ];
-        } else if (['Phục chế ảnh cũ', 'Truyện tranh', 'Chân dung phác thảo bút chì', 'Check-in địa điểm du lịch', 'Chụp ảnh cùng sản phẩm mẫu', 'Nền chuyển động', 'Tạo mô hình 3D'].includes(selectedFeature)) {
+        } else if (selectedFeature === 'Xóa nền') {
+          if (!subjectImage) throw new Error('Vui lòng tải lên ảnh bạn muốn xóa nền.');
+          setLoadingMessage('Đang xóa nền ảnh...');
+          request = { type: 'image', prompt, subjectImage, selectedFeature, selectedStyle };
+          generationPromises = [editImage(englishPromptForApi, subjectImage)];
+        } 
+        else if (['Phục chế ảnh cũ', 'Truyện tranh', 'Chân dung phác thảo bút chì', 'Check-in địa điểm du lịch', 'Chụp ảnh cùng sản phẩm mẫu', 'Nền chuyển động', 'Tạo mô hình 3D'].includes(selectedFeature)) {
             if (!subjectImage) throw new Error('Vui lòng tải lên ảnh của bạn.');
             setLoadingMessage('Đang xử lý ảnh, vui lòng đợi...');
             request = { type: 'image', prompt, subjectImage, selectedFeature, selectedStyle, model3dStyle };

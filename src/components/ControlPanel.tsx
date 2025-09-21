@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { ActiveTab, ImageFile } from '../types';
 import { ImageUploader } from './ImageUploader';
@@ -95,6 +96,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const features: { [key: string]: string } = {
       "Tạo LOGO": "Tạo LOGO",
       "Tạo ảnh từ văn bản": "Tạo ảnh từ văn bản",
+      "Xóa nền": "Xóa nền (Nền trong suốt)",
       "Thay đổi phông nền sản phẩm": "Thay đổi phông nền sản phẩm",
       "Chụp ảnh cùng sản phẩm mẫu": "Chụp ảnh cùng sản phẩm mẫu",
       "Chụp ảnh cùng người nổi tiếng": "Chụp ảnh cùng người nổi tiếng",
@@ -114,7 +116,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const showPromptForImage = !['Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh'].includes(selectedFeature);
   const showAdvancedImageControls = activeTab === 'image' && ['', 'Tạo ảnh từ văn bản', 'Tạo LOGO', 'Thay đổi phông nền sản phẩm'].includes(selectedFeature);
   const showImageUploaderForImage = activeTab === 'image' && !['Tạo ảnh từ văn bản', 'Tạo LOGO'].includes(selectedFeature);
-  const showSingleImageUploader = ['Tạo ảnh thẻ', 'Phục chế ảnh cũ (1 chủ thể)', 'Phục chế ảnh cũ', 'Truyện tranh', 'Chân dung phác thảo bút chì', 'Check-in địa điểm du lịch', 'Thay đổi phông nền sản phẩm', 'Làm nét/ tăng độ phân giải ảnh', 'Chụp ảnh cùng sản phẩm mẫu', 'Nền chuyển động', 'Tạo mô hình 3D'].includes(selectedFeature);
+  const showSingleImageUploader = ['Tạo ảnh thẻ', 'Phục chế ảnh cũ (1 chủ thể)', 'Phục chế ảnh cũ', 'Truyện tranh', 'Chân dung phác thảo bút chì', 'Check-in địa điểm du lịch', 'Thay đổi phông nền sản phẩm', 'Làm nét/ tăng độ phân giải ảnh', 'Chụp ảnh cùng sản phẩm mẫu', 'Nền chuyển động', 'Tạo mô hình 3D', 'Xóa nền'].includes(selectedFeature);
 
 
   return (
@@ -164,7 +166,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                           value={logoText}
                           onChange={(e) => setLogoText(e.target.value)}
                           className="w-full bg-brand-dark border border-brand-muted rounded-md p-2.5 text-brand-light focus:ring-brand-primary focus:border-brand-primary"
-                          placeholder="ví dụ: Penci, ThangMui Creative"
+                          placeholder="ví dụ: Penci, TM CREATIVE"
                       />
                   </div>
                   <SelectInput label="Phong cách Logo" value={logoStyle} onChange={(e) => setLogoStyle(e.target.value)}>
@@ -241,7 +243,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                     </button>
                     <button
                       onClick={props.onGenerateCreativePrompt}
-                      disabled={isLoading}
+                      disabled={isLoading || ['Xóa nền', 'Phục chế ảnh cũ (1 chủ thể)', 'Làm nét/ tăng độ phân giải ảnh'].includes(selectedFeature)}
                       className="flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <SparklesIcon className="w-4 h-4" />

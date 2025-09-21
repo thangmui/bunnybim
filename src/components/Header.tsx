@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LogoIcon, KeyIcon } from './icons';
 
@@ -14,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenApiKeyModal, hasApiKeys })
       <div className="flex items-center justify-center gap-3">
         <LogoIcon className="w-8 h-8 text-brand-primary" />
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-brand-light">
-          THANGMUI CREATIVE
+          TM CREATIVE
         </h1>
       </div>
       <p className="mt-2 text-md sm:text-lg text-brand-subtle">
