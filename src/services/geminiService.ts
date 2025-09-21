@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { ImageFile } from '../types';
 
@@ -617,23 +618,42 @@ export const generatePencilSketchPrompt = (): string => {
     ];
     return prompts[Math.floor(Math.random() * prompts.length)];
 };
-export const generateTravelCheckinPrompt = (): string => {
-    const locations = [
-        { name: 'Ha Long Bay, Vietnam', description: 'standing on a traditional junk boat, surrounded by the iconic limestone karsts and emerald green water of Ha Long Bay under a clear blue sky.' },
-        { name: 'Eiffel Tower, Paris', description: 'in a classic Parisian street-style photo with the Eiffel Tower prominent in the background, during a beautiful sunset.' },
-        { name: 'Santorini, Greece', description: 'posing against the famous blue-domed churches and white-washed buildings of Oia, Santorini, with the Aegean Sea sparkling behind.' },
-        { name: 'Shibuya Crossing, Tokyo', description: 'captured in a dynamic, candid shot amidst the vibrant chaos and neon lights of Shibuya Crossing at night.' },
-        { name: 'Nho Que River, Ha Giang', description: 'standing at a viewpoint overlooking the breathtaking Nho Que River canyon in Ha Giang, with majestic green mountains all around.' },
-        { name: 'Golden Gate Bridge, San Francisco', description: 'on a scenic overlook with the iconic Golden Gate Bridge in the background, with a bit of morning fog rolling in.' },
-        { name: 'Colosseum, Rome', description: 'enjoying a sunny day in Rome, with the ancient Colosseum providing a historic and grand backdrop.' }
-    ];
-    const location = locations[Math.floor(Math.random() * locations.length)];
+export const generateTravelCheckinPrompt = async (): Promise<string> => {
+    try {
+        const creativeScenarioPrompt = `
+Generate a creative and vivid description for a travel check-in photo scene. The description must be in English.
+- Pick a famous or breathtaking tourist destination anywhere in the world. Be diverse and creative with locations (e.g., Machu Picchu, Icelandic glaciers, Kyoto temples, Serengeti safari, etc.).
+- Describe the scene with interesting details about the time of day (e.g., sunrise, golden hour, neon-lit night), weather (e.g., misty morning, clear blue sky, dramatic storm clouds), and atmosphere (e.g., bustling, serene, adventurous, romantic).
+- Suggest a high-quality photographic style (e.g., cinematic with anamorphic lens flare, soft natural light, vibrant travel blogger style, dramatic landscape photography, high-fashion).
 
-    return `Realistically place the person from the uploaded photo into a new scene. The scene is them ${location.description}.
+Example output format: "posing on a wooden dock over a crystal-clear lake in the Canadian Rockies during a misty sunrise. The style is serene and adventurous, shot with a wide-angle lens to capture the grand scale of the mountains."
+
+Return ONLY the description of the scene. Do not add any introductory text like "Here is a description:".
+`;
+
+        const scenarioDescription = await makeApiCallWithRetry(async (ai) => {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: creativeScenarioPrompt,
+                config: {
+                    thinkingConfig: { thinkingBudget: 0 },
+                    temperature: 1.0, // High temperature for maximum creativity
+                }
+            });
+            return response.text.trim();
+        });
+
+        const finalPrompt = `Realistically place the person from the uploaded photo into a new scene. The scene is them ${scenarioDescription}.
 Crucial Instructions:
 1.  Identity Preservation: The person's face, body, clothing, and pose must be kept exactly as they are in the original photo.
 2.  Seamless Integration: The lighting, shadows, perspective, and scale on the person must perfectly match the new background environment.
 3.  Photorealistic Quality: The final image must look like a single, high-resolution, professionally shot travel photograph. It should be indistinguishable from a real photo taken at that location.`;
+        
+        return finalPrompt;
+
+    } catch (error) {
+        throw handleApiError(error, "Sáng tạo prompt check-in du lịch thất bại. Vui lòng thử lại.");
+    }
 };
 export const generateLogoPrompt = (style: string, text: string): string => {
     const brandName = text || 'BRAND'; // Use a placeholder if text is empty

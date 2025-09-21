@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ControlPanel } from './components/ControlPanel';
@@ -158,7 +159,7 @@ const App: React.FC = () => {
       } else if (selectedFeature === 'Chân dung phác thảo bút chì') {
         englishPrompt = generatePencilSketchPrompt();
       } else if (selectedFeature === 'Check-in địa điểm du lịch') {
-        englishPrompt = generateTravelCheckinPrompt();
+        englishPrompt = await generateTravelCheckinPrompt();
       } else if (selectedFeature === 'Thay đổi phông nền sản phẩm') {
         englishPrompt = generateProductBackgroundPrompt();
       } else if (selectedFeature === 'Chụp ảnh cùng sản phẩm mẫu') {
